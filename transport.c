@@ -25,6 +25,7 @@
 enum {
     CSTATE_CLOSED,
     CSTATE_SYN_SENT,
+    CSTATE_SYN_RECVD,
     CSTATE_ESTABLISHED };    /* you should have more states */
 
 
@@ -75,8 +76,15 @@ static void transport_send_data(mysocket_t sd, void* data, int len, context_t* c
 }
 /*
  */
-static void transport_send_head(mysocket_t sd, struct tcphdr * head, int hflag, context_t* ctx)//LAN
+static void transport_send_head(mysocket_t sd, int hflag, context_t* ctx)//LAN
 {
+    struct tcphdr head;
+    //fill a ACK header
+    head.th_flags = hflag;
+    head.th_seq = ;//unsent seq number
+    head.th_ack = ctx->next_seq;//ctx->next_seq;
+    head.th_win = ;//???
+    
     
     //use htonl htons to codec
     
@@ -84,7 +92,113 @@ static void transport_send_head(mysocket_t sd, struct tcphdr * head, int hflag, 
 
 static bool_t transport_3way_handshake(mysocket_t sd, context_t *ctx)//ZX
 {
+    mysock_context_t * sdctx = (mysock_context_t *)stcp_get_context(sd);
     
+    if(sdctx->is_active)
+    {
+        transport_send(sd, NULL, 0, TH_SYN, ctx);
+        ctx->connection_state = CSTATE_SYN_SENT;
+        
+        
+        //wait for SYN+ACK
+        unsigned int event;
+        
+        event= stcp_wait_for_event(sd, 0, NULL);
+        if(!(event & NETWORK_DATA))
+        {
+            errno = ECONNREFUSED;
+            return 0;
+        }
+        //read the header from network
+        struct tcphdr head;
+        int headsize = transport_recv_head(sd, &head, sizeof(struct tcphdr));
+        if(headsize != sizeof(struct tcphdr))
+        {
+            errno = ECONNREFUSED;
+            return 0;
+        }
+        //if it is  SNY + ACK message
+        if( head.th_flags != (TH_ACK|TH_SYN))
+        {
+            errno = ECONNREFUSED;
+            return 0;
+        }
+        
+        ctx->ack = head.th_ack;
+        ctx->next_seq = head.th_seq + 1;
+        ctx->slide_window = head.th_win;
+        
+        
+        //send ACK back then finished
+        transport_send_head(sd, &head, TH_ACK, ctx);
+        
+        return 1;
+
+    }
+    if(!sdctx->is_active) //wait for SYN message
+    {
+        
+        unsigned int event = stcp_wait_for_event(sd, 0, NULL);
+        if(!(event & NETWORK_DATA))
+        {
+            errno = ECONNREFUSED;
+            return 0;
+        }
+        
+        //read the header from network
+        struct tcphdr head;
+        int headsize = transport_recv_head(sd, &head, sizeof(struct tcphdr));
+        if(headsize != sizeof(struct tcphdr))
+        {
+            errno = ECONNREFUSED;
+            return 0;
+        }
+        
+        //if it is  SYN message
+        if( head.th_flags != TH_SYN)
+        {
+            errno = ECONNREFUSED;
+            return 0;
+        }
+        
+        ctx->ack = head.th_ack;
+        ctx->next_seq = head.th_seq + 1;
+        ctx->slide_window = head.th_win;
+        
+        ctx->connection_state = CSTATE_SYN_RECVD;
+
+        
+        //fill a ACK header
+        head.th_seq = ctx->next_seq;
+        head.th_ack = ctx->next_seq;
+        head.th_win = //???
+        
+        //send ACK back then finished
+        transport_send_head(sd, &head, TH_ACK, ctx);
+        
+        
+        headsize = transport_recv_head(sd, &head, sizeof(struct tcphdr));
+        if(headsize != sizeof(struct tcphdr))
+        {
+            errno = ECONNREFUSED;
+            return 0;
+        }
+        
+        //if it is  ACK confirmed message
+        if( head.th_flags != TH_ACK)
+        {
+            errno = ECONNREFUSED;
+            return 0;
+        }
+        
+        ctx->ack = head.th_ack;
+        ctx->next_seq = head.th_seq + 1;
+        ctx->slide_window = head.th_win;
+
+        
+        
+    }
+
     
     return 0;
 }
@@ -107,7 +221,6 @@ void transport_init(mysocket_t sd, bool_t is_active)
     ctx = (context_t *) calloc(1, sizeof(context_t));
     assert(ctx);
     
-    mysock_context_t * sdctx = (mysock_context_t *)stcp_get_context(sd);
  
     generate_initial_seq_num(ctx);
     ctx->connection_state = CSTATE_CLOSED;
@@ -120,43 +233,14 @@ void transport_init(mysocket_t sd, bool_t is_active)
      * if connection fails; to do so, just set errno appropriately (e.g. to
      * ECONNREFUSED, etc.) before calling the function.
      */
-    //send SYN if(ctx->is_active)
-    if(sdctx->is_active){
-        transport_send(sd, NULL, 0, TH_SYN, ctx);
-        ctx->connection_state = CSTATE_SYN_SENT;
-        
-        
-        //wait for SYN+ACK
-        unsigned int event = stcp_wait_for_event(sd, 0, NULL);
-        if(event & NETWORK_DATA)
-        {
-            //stcp_network_recv
-            
-            //if it is  SNY + ACK message
-        }
-        else{
-            errno = ECONNREFUSED;
-            stcp_unblock_application(sd);
-            free(ctx);
-            return;
-        }
-    }
-    else{//wait for SYN message
-        unsigned int event = stcp_wait_for_event(sd, 0, NULL);
-        if(event & NETWORK_DATA)
-        {
-            //stcp_network_recv
-            
-            //if it is  SNY + ACK message
-        }
-        else{
-            errno = ECONNREFUSED;
-            stcp_unblock_application(sd);
-            free(ctx);
-            return;
-        }
-    }
     
+    if (!transport_3way_handshake(sd, ctx))
+    {
+        stcp_unblock_application(sd);
+        free(ctx);
+        return;
+    }
+
     //init send and recv buffer here
     
     
