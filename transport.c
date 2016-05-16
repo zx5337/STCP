@@ -55,23 +55,28 @@ static void control_loop(mysocket_t sd, context_t *ctx);
 static int transport_recv_head(mysocket_t sd, void* headbuf, int headlen)//LAN
 {
     //use ntohl ntohs decode related header
-    
-    return -1;
+    ssize_t result = stcp_network_recv(sd, headbuf, sizeof(struct tcphdr), NULL);
+    headbuf.th_seq = ntohs(head.th_seq);
+    headbuf.th_ack = ntohs(head.th_ack);
+    headbuf.th_win = ntohs(head.th_win);
+    return sizeof(headbuf);
 }
 /*
  */
 static int transport_recv_data(mysocket_t sd, void* buf, int headlen)//LAN
 {
-    
-    
-    return -1;
+    ssize_t result = stcp_network_recv(sd, recv_buffer, sizeof(recv_buffer), NULL);
+    return result;//returns the actual amount of data read into recv_buffer
+    //send real app data or stub data 
 }
 /*
 */
-static void transport_send_data(mysocket_t sd, void* data, int len, context_t* ctx)//LAN
+static void transport_send_data(mysocket_t sd, char* data, int len, context_t* ctx)//LAN
 {
-    
-    //send real app data or stub data
+    strncpy(send_buffer, data);
+    ctx.next_seq += len;
+    ssize_t result = stcp_network_send(sd, send_buffer, sizeof(send_buffer), NULL);
+    //send real app data or stub data   
     
 }
 /*
@@ -84,11 +89,14 @@ static void transport_send_head(mysocket_t sd, int hflag, context_t* ctx)//LAN
     head.th_seq = ;//unsent seq number
     head.th_ack = ctx->next_seq;//ctx->next_seq;
     head.th_win = ;//???
-    
-    
+    head.th_seq = htons(head.th_seq);
+    head.th_ack = htons(head.th_ack);
+    head.th_win = htons(head.th_win);
+    ssize_t result = stcp_network_send(sd, send_buffer, sizeof(struct tcphdr), NULL);
     //use htonl htons to codec
     
 }
+
 
 static bool_t transport_3way_handshake(mysocket_t sd, context_t *ctx)//ZX
 {
