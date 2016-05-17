@@ -36,9 +36,9 @@ typedef struct
 
     int connection_state;   /* state of the connection (established, etc.) */
     tcp_seq initial_sequence_num;
-    tcp_seq next_seq;
-    tcp_seq ack;
-    int slide_window;
+    tcp_seq next_seq;//send buffer next byte to send
+    tcp_seq ack;//receive buffer next ack frame to ack the other side
+    int slide_window;//TH_WIN  receive buffer free size of the other side
     
     char* recv_buffer;//ZX
     char* send_buffer;//LAN
@@ -52,7 +52,7 @@ static void generate_initial_seq_num(context_t *ctx);
 static void control_loop(mysocket_t sd, context_t *ctx);
 /*
  */
-static int transport_recv_head(mysocket_t sd, void* headbuf, int headlen)//LAN
+static ssize_t transport_recv_head(mysocket_t sd, void* headbuf, ssize_t headlen)//LAN
 {
     //use ntohl ntohs decode related header
     ssize_t result = stcp_network_recv(sd, headbuf, sizeof(struct tcphdr), NULL);
@@ -63,7 +63,7 @@ static int transport_recv_head(mysocket_t sd, void* headbuf, int headlen)//LAN
 }
 /*
  */
-static int transport_recv_data(mysocket_t sd, void* buf, int headlen)//LAN
+static ssize_t transport_recv_data(mysocket_t sd, void* buf, ssize_t headlen)//LAN
 {
     ssize_t result = stcp_network_recv(sd, recv_buffer, sizeof(recv_buffer), NULL);
     return result;//returns the actual amount of data read into recv_buffer
@@ -71,7 +71,7 @@ static int transport_recv_data(mysocket_t sd, void* buf, int headlen)//LAN
 }
 /*
 */
-static void transport_send_data(mysocket_t sd, char* data, int len, context_t* ctx)//LAN
+static void transport_send_data(mysocket_t sd, char* data, ssize_t datalen, context_t* ctx)//LAN
 {
     strncpy(send_buffer, data);
     ctx.next_seq += len;
@@ -81,7 +81,7 @@ static void transport_send_data(mysocket_t sd, char* data, int len, context_t* c
 }
 /*
  */
-static void transport_send_head(mysocket_t sd, int hflag, context_t* ctx)//LAN
+static void transport_send_head(mysocket_t sd, int hflag, ssize_t datalen, context_t* ctx)//LAN
 {
     struct tcphdr head;
     //fill a ACK header
@@ -132,9 +132,9 @@ static bool_t transport_3way_handshake(mysocket_t sd, context_t *ctx)//ZX
             return 0;
         }
         
-        ctx->ack = head.th_ack;
-        ctx->next_seq = head.th_seq + 1;
-        ctx->slide_window = head.th_win;
+        ctx->ack = head.th_seq;
+        ctx->next_seq = head.th_ack;
+        ctx->slide_window = head.th_win;//receive buffer free size of the other side
         
         
         //send ACK back then finished
@@ -204,7 +204,7 @@ static bool_t transport_3way_handshake(mysocket_t sd, context_t *ctx)//ZX
         ctx->slide_window = head.th_win;
 
         
-        
+        return 1;
     }
 
     
@@ -305,9 +305,23 @@ static void control_loop(mysocket_t sd, context_t *ctx)
         {
             /* the application has requested that data be sent */
             /* see stcp_app_recv() */
-            //write to send buffer
             
-            //buff is full send stcp_network_send();
+            //get send buffer free size == freesize
+            char[3076] buff= {0};
+            size_t datalen = stcp_app_recv(sd, buff, freesize);
+
+            SendBuff.write(buff, datalen);
+            
+            //write to send buffer( min (send buffer free size, ))
+            
+            
+            //stcp_unblock_application(sd);
+            
+            //send stcp_network_send();
+            
+            //transport send head
+            
+            //transport send data
         }
         
         if(event & NETWORK_DATA)//ZX
