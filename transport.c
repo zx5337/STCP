@@ -26,7 +26,13 @@ enum {
     CSTATE_CLOSED,
     CSTATE_SYN_SENT,
     CSTATE_SYN_RECVD,
-    CSTATE_ESTABLISHED };    /* you should have more states */
+    CSTATE_ESTABLISHED,
+    CSTATE_FIN_WAIT1,
+    CSTSTE_FIN_WATI2,
+    CSTATE_TIME_WAIT,
+    CSTAET_CLOSE_WAIT,
+    CSTATE_LAST_ACK
+    };    /* you should have more states */
 
 
 /* this structure is global to a mysocket descriptor */
@@ -56,7 +62,26 @@ typedef struct
 
 static void generate_initial_seq_num(context_t *ctx);
 static void control_loop(mysocket_t sd, context_t *ctx);
+
 /*
+ */
+static ssize_t transport_recv_fragment(mysocket_t sd, void* fragmentbuf, ssize_t msslen){
+    
+    //receive a tcpheader from fragment
+    
+    
+    //find the read data len datalen = totallen - headerlen;
+    
+    
+    //cache the realdata in to cache, or !!!just send it to app layer!!!!
+    
+    
+    //unblock the application
+    return 0;
+}
+
+/*
+ useless anymore
  */
 static ssize_t transport_recv_head(mysocket_t sd, void* headbuf, ssize_t headlen)//LAN
 {
@@ -68,6 +93,7 @@ static ssize_t transport_recv_head(mysocket_t sd, void* headbuf, ssize_t headlen
     return sizeof(headbuf);
 }
 /*
+ useless anymore
  */
 static ssize_t transport_recv_data(mysocket_t sd, void* buf, ssize_t headlen)//LAN
 {
@@ -75,6 +101,25 @@ static ssize_t transport_recv_data(mysocket_t sd, void* buf, ssize_t headlen)//L
     return result;//returns the actual amount of data read into recv_buffer
     //send real app data or stub data 
 }
+
+/*
+ */
+static void transport_send_head(mysocket_t sd, int hflag, ssize_t datalen, context_t* ctx)//LAN
+{
+    struct tcphdr head;
+    //fill a ACK header
+    head.th_flags = hflag;
+    head.th_seq = ctx->next_seq;//unsent seq number
+    head.th_ack = ctx->ack;//ctx->next_seq;
+    head.th_win = STCP_MSS;//local recv buffer free size/ since no receive buffer then just == MSS is OK.
+    head.th_seq = htons(head.th_seq);
+    head.th_ack = htons(head.th_ack);
+    head.th_win = htons(head.th_win);
+    ssize_t result = stcp_network_send(sd, send_buffer, sizeof(struct tcphdr), NULL);
+    //use htonl htons to codec
+    
+}
+
 /*
 */
 static void transport_send_data(mysocket_t sd, char* data, ssize_t datalen, context_t* ctx)//LAN
@@ -83,23 +128,6 @@ static void transport_send_data(mysocket_t sd, char* data, ssize_t datalen, cont
     ctx.next_seq += len;
     ssize_t result = stcp_network_send(sd, send_buffer, sizeof(send_buffer), NULL);
     //send real app data or stub data   
-    
-}
-/*
- */
-static void transport_send_head(mysocket_t sd, int hflag, ssize_t datalen, context_t* ctx)//LAN
-{
-    struct tcphdr head;
-    //fill a ACK header
-    head.th_flags = hflag;
-    head.th_seq = ;//unsent seq number
-    head.th_ack = ctx->next_seq;//ctx->next_seq;
-    head.th_win = ;//???
-    head.th_seq = htons(head.th_seq);
-    head.th_ack = htons(head.th_ack);
-    head.th_win = htons(head.th_win);
-    ssize_t result = stcp_network_send(sd, send_buffer, sizeof(struct tcphdr), NULL);
-    //use htonl htons to codec
     
 }
 
@@ -125,7 +153,7 @@ static bool_t transport_3way_handshake(mysocket_t sd, context_t *ctx)//ZX
         }
         //read the header from network
         struct tcphdr head;
-        int headsize = transport_recv_head(sd, &head, sizeof(struct tcphdr));
+        int headsize = transport_recv_fragment(sd, &head, sizeof(struct tcphdr));
         if(headsize != sizeof(struct tcphdr))
         {
             errno = ECONNREFUSED;
@@ -175,17 +203,17 @@ static bool_t transport_3way_handshake(mysocket_t sd, context_t *ctx)//ZX
             return 0;
         }
         
-        ctx->ack = head.th_ack;
-        ctx->next_seq = head.th_seq + 1;
-        ctx->slide_window = head.th_win;
+        ctx->ack = head.th_seq;
+        ctx->next_seq = head.th_ack;
+        ctx->slide_window = head.th_win;//receive buffer free size of the other side
         
         ctx->connection_state = CSTATE_SYN_RECVD;
 
         
         //fill a ACK header
         head.th_seq = ctx->next_seq;
-        head.th_ack = ctx->next_seq;
-        head.th_win = //???
+        head.th_ack = ctx->ack;
+        head.th_win = MSS//local receive buffer free size;
         
         //send ACK back then finished
         transport_send_head(sd, &head, TH_ACK, ctx);
@@ -309,6 +337,11 @@ static void control_loop(mysocket_t sd, context_t *ctx)
         /* check whether it was the network, app, or a close request */
         if (event & APP_DATA)//LAN
         {
+            if (ctx->connection_state != CSTATE_ESTABLISHED) {
+                //error FIXME
+                errno = 0;
+                return;
+            }
             /* the application has requested that data be sent */
             /* see stcp_app_recv() */
             
@@ -332,6 +365,11 @@ static void control_loop(mysocket_t sd, context_t *ctx)
         
         if(event & NETWORK_DATA)//ZX
         {
+            if (ctx->connection_state != CSTATE_ESTABLISHED) {
+                //error FIXME
+                errno = 0;
+                return;
+            }
             //stcp_network_recv();
             //write recv buffer
             
@@ -349,11 +387,24 @@ static void control_loop(mysocket_t sd, context_t *ctx)
         {
             //buff is full send stcp_network_send();
             
+            switch (ctx->connection_state) {
+                case CSTATE_ESTABLISHED:
+                    //if send buffer data size is not zero
+                    //send a max data out
+                    break;
+                    
+                default:
+                    break;
+            }
+            
         }
 
         if(event & APP_CLOSE_REQUESTED)//ZX
         {
-            
+            if (ctx->connection_state != CSTATE_ESTABLISHED) {
+                //error FIXME
+                return;
+            }
             if(!transport_2way_close(sd, ctx))
             {
                 errno = 0;//FIXME
