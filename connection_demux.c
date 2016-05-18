@@ -158,8 +158,8 @@ bool_t _mysock_enqueue_connection(mysock_context_t      *ctx,
     _debug_print_connection(msg, reason, ctx, peer_addr)
 
     PTHREAD_CALL(pthread_rwlock_rdlock(&listen_lock));
-    if (packet_len < sizeof(struct tcphdr) ||
-        !(((struct tcphdr *) packet)->th_flags & TH_SYN))
+    if (packet_len < sizeof(struct tcphdr1) ||
+        !(((struct tcphdr1 *) packet)->th_flags & TH_SYN))
     {
         DEBUG_CONNECTION_MSG("received non-SYN packet", "(ignoring)");
         goto done;  /* not a connection setup request */

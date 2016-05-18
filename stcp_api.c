@@ -192,7 +192,7 @@ ssize_t stcp_network_send(mysocket_t sd, const void *src, size_t src_len, ...)
     size_t            packet_len;
     const void       *next_buf;
     va_list           argptr;
-    struct tcphdr    *header;
+    struct tcphdr1    *header;
 
     assert(ctx && src);
 
@@ -212,8 +212,8 @@ ssize_t stcp_network_send(mysocket_t sd, const void *src, size_t src_len, ...)
     va_end(argptr);
 
     /* fill in fields in the TCP header that aren't handled by students */
-    assert(packet_len >= sizeof(struct tcphdr));
-    header = (struct tcphdr *) packet;
+    assert(packet_len >= sizeof(struct tcphdr1));
+    header = (struct tcphdr1 *) packet;
 
     header->th_sport = _network_get_port(&ctx->network_state);
     /* N.B. assert(header->th_sport > 0) fires in the UDP SYN-ACK case */

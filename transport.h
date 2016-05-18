@@ -41,7 +41,7 @@
 
 typedef uint32_t tcp_seq;
 
-typedef struct tcphdr
+typedef struct tcphdr1
 {
     uint16_t th_sport;  /* source port */
     uint16_t th_dport;  /* destination port */
@@ -92,8 +92,8 @@ typedef struct tcphdr
     #ifdef LINUX
         #include <string.h> /* Linux, for strerror_r() */
     #else
-        extern char *sys_errlist[];
-        #define strerror_r(num,buf,len) strncpy(buf, sys_errlist[num], len)
+        //extern char *sys_errlist[];
+        //#define strerror_r(num,buf,len) strncpy(buf, sys_errlist[num], len)
     #endif
 
     extern void our_dprintf(const char *format, ...);

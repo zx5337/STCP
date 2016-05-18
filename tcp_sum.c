@@ -31,7 +31,7 @@ uint16_t _mysock_tcp_checksum(uint32_t src_addr /*network byte order*/,
     unsigned int k;
     int32_t sum = 0;
 
-    assert(packet && len >= sizeof(struct tcphdr));
+    assert(packet && len >= sizeof(struct tcphdr1));
     assert(sizeof(pseudo_header) == 12);
 
 
@@ -44,10 +44,10 @@ uint16_t _mysock_tcp_checksum(uint32_t src_addr /*network byte order*/,
 
     /* process TCP header and payload */
     assert(((long)packet & 2) == 0);
-    assert((offsetof(struct tcphdr, th_sum) & 2) == 0);
+    assert((offsetof(struct tcphdr1, th_sum) & 2) == 0);
     for (k = 0; k < (len >> 1); ++k)
     {
-        if (k == (offsetof(struct tcphdr, th_sum) >> 1))
+        if (k == (offsetof(struct tcphdr1, th_sum) >> 1))
             continue;   /* th_sum == 0 during checksum computation */
         sum += ((uint16_t *) packet)[k];
     }
@@ -71,11 +71,11 @@ void _mysock_set_checksum(const mysock_context_t *ctx,
                           void *packet, size_t len)
 {
     assert(ctx && packet);
-    assert(len >= sizeof(struct tcphdr));
+    assert(len >= sizeof(struct tcphdr1));
 
     assert(ctx->network_state.peer_addr.sa_family == AF_INET);
 
-    ((struct tcphdr *) packet)->th_sum = _mysock_tcp_checksum(
+    ((struct tcphdr1 *) packet)->th_sum = _mysock_tcp_checksum(
         _network_get_local_addr((network_context_t *)
                                 &ctx->network_state), /*src*/
         ((struct sockaddr_in *) &ctx->network_state.peer_addr)-> /*dst*/
@@ -90,7 +90,7 @@ bool_t _mysock_verify_checksum(const mysock_context_t *ctx,
     uint16_t my_sum;
 
     assert(ctx && packet);
-    assert(len >= sizeof(struct tcphdr));
+    assert(len >= sizeof(struct tcphdr1));
 
     assert(ctx->network_state.peer_addr.sa_family == AF_INET);
 
@@ -101,6 +101,6 @@ bool_t _mysock_verify_checksum(const mysock_context_t *ctx,
                                 &ctx->network_state), /*dst*/
         packet, len);
 
-    return my_sum == ((struct tcphdr *) packet)->th_sum;
+    return my_sum == ((struct tcphdr1 *) packet)->th_sum;
 }
 

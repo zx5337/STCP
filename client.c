@@ -62,7 +62,7 @@ main(int argc, char *argv[])
         switch (opt)
         {
         case 'f':
-            filename = optarg;
+            //filename = optarg;
             break;
         case 'q':
             ++quiet_opt;
@@ -72,13 +72,13 @@ main(int argc, char *argv[])
             break;
         }
     }
-
+    /*
     if (errflg || optind != argc - 1)
     {
         fputs(usage, stderr);
         exit(1);
     }
-
+    
     pline = argv[optind];
 
     if (parse_address(pline, &sin) < 0)
@@ -92,7 +92,7 @@ main(int argc, char *argv[])
         fprintf(stderr, "Format is %s server:port\n", argv[0]);
         exit(1);
     }
-
+    */
     if ((sd = mysocket()) < 0)
     {
         perror("mysocket");
