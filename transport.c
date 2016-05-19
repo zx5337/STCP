@@ -49,7 +49,7 @@ typedef struct
 
 typedef struct
 {
-	STCPHeader header;
+    STCPHeader header;
     char payload[STCP_MSS];
     ssize_t data_len;
 } STCP_Packet;
