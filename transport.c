@@ -242,15 +242,15 @@ static bool_t transport_3handshake_active(mysocket_t sd, context_t *ctx)//ZX
 {
         STCPHeader head;
         //send out a SYN fragment
-        our_dprintf("Handshake_active: sending SYN \n");
+        //our_dprintf("Handshake_active: sending SYN \n");
         transport_send_fragment(sd, TH_SYN, &head, sizeof(STCPHeader), ctx);
         ctx->connection_state = CSTATE_SYN_SENT;
-        our_dprintf("Handshake_active: sent SYN\n");
+        //our_dprintf("Handshake_active: sent SYN\n");
         
         //wait for SYN+ACK
         unsigned int event;
     
-        our_dprintf("Handshake_active: wait for SYN ACK\n");
+        //our_dprintf("Handshake_active: wait for SYN ACK\n");
 
         event = stcp_wait_for_event(sd, NETWORK_DATA, NULL);
 
@@ -269,12 +269,12 @@ static bool_t transport_3handshake_active(mysocket_t sd, context_t *ctx)//ZX
             errno = ECONNREFUSED;
             return 0;
         }
-        our_dprintf("Handshake_active: received SYN ACK, seq=%d, ack=%d, win=%d\n",head.th_seq,head.th_ack,head.th_win);
+        //our_dprintf("Handshake_active: received SYN ACK, seq=%d, ack=%d, win=%d\n",head.th_seq,head.th_ack,head.th_win);
         ctx->send_ack = head.th_ack;
         ctx->recv_ack = head.th_seq;
         ctx->slide_window = head.th_win;//receive buffer free size of the other side
         
-        our_dprintf("Handshake_active: sending finial ACK back\n");
+        //our_dprintf("Handshake_active: sending finial ACK back\n");
         //send ACK back then finished
         transport_send_fragment(sd, TH_ACK, &head, sizeof(STCPHeader), ctx);
     
@@ -283,7 +283,7 @@ static bool_t transport_3handshake_active(mysocket_t sd, context_t *ctx)//ZX
 }
 static bool_t transport_3handshake_positive(mysocket_t sd, context_t *ctx)
 {
-        our_dprintf("Handshake_positive: wait for SYN\n");
+        //our_dprintf("Handshake_positive: wait for SYN\n");
         unsigned int event = stcp_wait_for_event(sd, NETWORK_DATA, NULL);
         
         //read the header from network
@@ -304,20 +304,20 @@ static bool_t transport_3handshake_positive(mysocket_t sd, context_t *ctx)
             return 0;
         }
     
-        our_dprintf("Handshake_positive: received SYN, seq=%d, ack=%d, win=%d\n",head.th_seq,head.th_ack,head.th_win);
+        //our_dprintf("Handshake_positive: received SYN, seq=%d, ack=%d, win=%d\n",head.th_seq,head.th_ack,head.th_win);
         ctx->send_ack = head.th_ack;
         ctx->recv_ack = head.th_seq;
         ctx->slide_window = head.th_win;//receive buffer free size of the other side
         
         ctx->connection_state = CSTATE_SYN_RECVD;
 
-        our_dprintf("Handshake_positive: sending SYN ACK back \n");
+        //our_dprintf("Handshake_positive: sending SYN ACK back \n");
         //send SYN ACK back then finished
         transport_send_fragment(sd, TH_ACK|TH_SYN, &head, sizeof(STCPHeader), ctx);
     
-        our_dprintf("Handshake_positive: sent SYN ACK back \n");
+        //our_dprintf("Handshake_positive: sent SYN ACK back \n");
     
-        our_dprintf("Handshake_positive: wait for ACK \n");
+        //our_dprintf("Handshake_positive: wait for ACK \n");
         event = stcp_wait_for_event(sd, NETWORK_DATA, NULL);
 
         headsize = transport_recv_fragment(sd, &head, sizeof(STCPHeader));
@@ -336,7 +336,7 @@ static bool_t transport_3handshake_positive(mysocket_t sd, context_t *ctx)
             return 0;
         }
     
-        our_dprintf("Handshake_positive: received SYN, seq=%d, ack=%d, win=%d\n",head.th_seq,head.th_ack,head.th_win);
+        //our_dprintf("Handshake_positive: received SYN, seq=%d, ack=%d, win=%d\n",head.th_seq,head.th_ack,head.th_win);
         ctx->send_ack = head.th_ack;
         ctx->recv_ack = head.th_seq;
         ctx->slide_window = head.th_win;
@@ -369,6 +369,9 @@ void transport_init(mysocket_t sd, bool_t is_active)
     ctx->slide_window = RECEIVE_WIN;
     ctx->connection_state = CSTATE_CLOSED;
     ctx->active = is_active;
+    
+    ctx->recv_ack = 0;
+    ctx->send_ack = 0;
 
     /* XXX: you should send a SYN packet here if is_active, or wait for one
      * to arrive if !is_active.  after the handshake completes, unblock the
@@ -404,7 +407,7 @@ void transport_init(mysocket_t sd, bool_t is_active)
     init_buffer(&ctx->send_buffer, BUFFER_SIZE, ctx->initial_sequence_num);//FIXME
     init_buffer(&ctx->recv_buffer, BUFFER_SIZE, ctx->initial_sequence_num);
     
-    our_dprintf("Init send and recv buffer succeed\n");
+    //our_dprintf("Init send and recv buffer succeed\n");
     ctx->connection_state = CSTATE_ESTABLISHED;
     stcp_unblock_application(sd);
 
@@ -429,7 +432,7 @@ static void generate_initial_seq_num(context_t *ctx)
 #else
     srand(time(NULL));
     ctx->initial_sequence_num = rand()%255;
-    our_dprintf("initial_sequence_num:%d\n", ctx->initial_sequence_num);
+    //our_dprintf("initial_sequence_num:%d\n", ctx->initial_sequence_num);
     /* you have to fill this up */
     /*ctx->initial_sequence_num =;*/
 #endif
@@ -457,7 +460,6 @@ static void control_loop(mysocket_t sd, context_t *ctx)
         errno = ECONNABORTED;
         return;
     }
-    our_dprintf("control_loop: init local cache succeed\n");
     while (!ctx->done)
     {
         unsigned int event;
@@ -480,9 +482,8 @@ static void control_loop(mysocket_t sd, context_t *ctx)
             //alloc memory from main memory for cache
             //write cache data to send buffer with real data size
             */
-            our_dprintf("APP_DATA: stcp_app_recv %d \n", sd);
             /* the application has requested that data be sent */
-            size_t datasize = stcp_app_recv(sd, cache+sizeof(STCPHeader), STCP_MSS);
+            size_t datasize = stcp_app_recv(sd, cache+sizeof(STCPHeader), STCP_MSS-sizeof(STCPHeader));
             our_dprintf("APP_DATA: stcp_app_recv finish datasize=%d \n", datasize);
             //while datasize !=0, receive all appdata and send to network;
             if (datasize >0) {
@@ -553,6 +554,7 @@ static void control_loop(mysocket_t sd, context_t *ctx)
                 our_dprintf("APP_CLOSE_REQUESTED: Close down failed :%d\n", ctx->connection_state);
                 errno = ECONNABORTED;
             }
+            ctx->connection_state = CSTATE_CLOSED;
             our_dprintf("APP_CLOSE_REQUESTED: Close down Succeed :%d\n", ctx->connection_state);
             ctx->done = 1;
         }
