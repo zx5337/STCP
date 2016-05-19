@@ -47,6 +47,12 @@ typedef struct
     /* any other connection-wide global variables go here */
 } context_t;
 
+typedef struct
+{
+	STCPHeader header;
+    char payload[STCP_MSS];
+    ssize_t data_len;
+} STCP_Packet;
 
 static void generate_initial_seq_num(context_t *ctx);
 static void control_loop(mysocket_t sd, context_t *ctx);
