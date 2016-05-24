@@ -542,7 +542,7 @@ static void control_loop(mysocket_t sd, context_t *ctx)
 
             {    stcp_fin_received(sd); 
                  mysock_context_t *ctx_s = _mysock_get_context(sd);
-                 ctx_s->close_requested = true;     }
+                 ctx_s->close_requested = true;     
              }
            */
         }
