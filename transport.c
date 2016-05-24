@@ -536,6 +536,15 @@ static void control_loop(mysocket_t sd, context_t *ctx)
                 our_dprintf("NETWORK_DATA: send ack to peer sendack=%d, nextseq=%d\n",ctx->send_ack,ctx->next_seq);
                 transport_send_fragment(sd, TH_ACK, cache, sizeof(STCPHeader) + acksize, ctx);
             }
+            // receive FIN
+           /* STCPHeader *header = (STCPHeader *) cache;
+            if(header->th_flags==TH_FIN) 
+
+            {    stcp_fin_received(sd); 
+                 mysock_context_t *ctx_s = _mysock_get_context(sd);
+                 ctx_s->close_requested = true;     }
+             }
+           */
         }
         
         if(event & APP_CLOSE_REQUESTED)//ZX
