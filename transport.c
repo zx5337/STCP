@@ -242,6 +242,7 @@ static bool_t close_socket(context_t *ctx){
   if (head->th_flags == TH_FIN) {
                         mysock_context_t *ctx_mysock = _mysock_get_context(sd);
                         ctx_mysock->close_requested = true;
+                        myclose(sd);
                         return 0;
                 }
     return 1;
@@ -514,6 +515,7 @@ static void control_loop(mysocket_t sd, context_t *ctx)
             }
             
             size_t recvsize = transport_recv_fragment(sd, cache, STCP_MSS);
+            
             our_dprintf("NETWORK_DATA: stcp_network_recv recvsize=%d \n", recvsize);
             
             if (recvsize > 0) {
@@ -530,9 +532,6 @@ static void control_loop(mysocket_t sd, context_t *ctx)
                     stcp_app_send(sd, cache+sizeof(STCPHeader), recvsize-sizeof(STCPHeader));
                 }
             }
-            
-            
-            
             size_t acksize = 0;
             /* only with send buffer
             //find out how many data I need send use this ack
@@ -548,7 +547,7 @@ static void control_loop(mysocket_t sd, context_t *ctx)
                 our_dprintf("NETWORK_DATA: send ack to peer sendack=%d, nextseq=%d\n",ctx->send_ack,ctx->next_seq);
                 transport_send_fragment(sd, TH_ACK, cache, sizeof(STCPHeader) + acksize, ctx);
             }
-
+            close_socket(ctx);
         }
         
         if(event & APP_CLOSE_REQUESTED)//ZX
@@ -568,7 +567,7 @@ static void control_loop(mysocket_t sd, context_t *ctx)
             ctx->done = 1;
         }
         
-        close_socket(ctx);
+        
 
         /* etc. */
     }
