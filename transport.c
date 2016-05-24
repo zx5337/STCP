@@ -237,6 +237,15 @@ static size_t transport_send_fragment(mysocket_t sd,int flag, void* fragmentbuf,
     return sent;
 }
 
+static bool_t close_socket(context_t *ctx){
+  STCPHeader head;
+  if (head->th_flags == TH_FIN) {
+                        mysock_context_t *ctx_mysock = _mysock_get_context(sd);
+                        ctx_mysock->close_requested = true;
+                        return 0;
+                }
+    return 1;
+}
 
 static bool_t transport_3handshake_active(mysocket_t sd, context_t *ctx)//ZX
 {
@@ -559,7 +568,7 @@ static void control_loop(mysocket_t sd, context_t *ctx)
             ctx->done = 1;
         }
         
-        
+        close_socket(ctx);
 
         /* etc. */
     }
