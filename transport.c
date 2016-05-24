@@ -237,17 +237,6 @@ static size_t transport_send_fragment(mysocket_t sd,int flag, void* fragmentbuf,
     return sent;
 }
 
-static bool_t close_socket(context_t *ctx){
-  STCPHeader head;
-  if (head->th_flags == TH_FIN) {
-                        mysock_context_t *ctx_mysock = _mysock_get_context(sd);
-                        ctx_mysock->close_requested = true;
-                        myclose(sd);
-                        return 0;
-                }
-    return 1;
-}
-
 static bool_t transport_3handshake_active(mysocket_t sd, context_t *ctx)//ZX
 {
         STCPHeader head;
@@ -547,7 +536,6 @@ static void control_loop(mysocket_t sd, context_t *ctx)
                 our_dprintf("NETWORK_DATA: send ack to peer sendack=%d, nextseq=%d\n",ctx->send_ack,ctx->next_seq);
                 transport_send_fragment(sd, TH_ACK, cache, sizeof(STCPHeader) + acksize, ctx);
             }
-            close_socket(ctx);
         }
         
         if(event & APP_CLOSE_REQUESTED)//ZX
