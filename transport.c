@@ -39,20 +39,20 @@ enum {
 
 typedef struct
 {
-    char* head;
-    char* tail;
+    size_t head;
+    size_t tail;
     char* buffer;
     size_t size;
     size_t datasize;
     size_t freesize;
     
 }cir_buffer;
-static void init_buffer(cir_buffer *buf, size_t _size, size_t initpos){
-
+static void init_buffer(cir_buffer *buf, unsigned int _size, size_t initpos){
+    
     buf->buffer = (char*)malloc(_size*sizeof(char));
     assert(buf->buffer!=NULL);
     buf->size = _size;
-    buf->head = buf->buffer + initpos;
+    buf->head = initpos;
     buf->tail = buf->head;
     
     buf->datasize = 0;
@@ -64,22 +64,24 @@ static void free_cirbuf(cir_buffer *buf)
     free(buf->buffer);
 }
 
-static size_t write_buffer(cir_buffer *buf, void* data, size_t datasize)
+static size_t write_buffer(cir_buffer *buf, char* data, size_t datasize)
 {
-    assert(datasize>buf->freesize);
+    assert(datasize<=buf->freesize);
+    size_t headpos = buf->head% buf->size;
     
-    if(datasize <= (buf->head - buf->buffer))//write data in regular
+    
+    if(datasize <= (buf->size - headpos))//write data in regular
     {
-        memcpy(buf->head, data, datasize);
+        memcpy(buf->buffer+headpos, data, datasize);
         buf->head = buf->head + datasize;
     }
     else //write in circular way
     {
-        size_t seg_size = buf->size -(buf->head - buf->buffer);
-        memcpy(buf->head, data, seg_size);
+        size_t seg_size = buf->size - headpos;
+        memcpy(buf->buffer+headpos, data, seg_size);
         memcpy(buf->buffer, data+seg_size, datasize-seg_size);
         
-        buf->head = buf->buffer + (datasize - seg_size);
+        buf->head+= datasize;
     }
     
     buf->freesize-= datasize;
@@ -88,9 +90,9 @@ static size_t write_buffer(cir_buffer *buf, void* data, size_t datasize)
     
 }
 
-static size_t read_buffer(cir_buffer *buf, tcp_seq seq, void* data, size_t datasize)
+static size_t read_buffer(cir_buffer *buf, size_t seq, char* data, size_t datasize)
 {
-    assert(datasize > buf->datasize);
+    assert(datasize <= buf->datasize);
     
     size_t realpos = seq % buf->size;
     
@@ -109,20 +111,14 @@ static size_t read_buffer(cir_buffer *buf, tcp_seq seq, void* data, size_t datas
     
 }
 
-static bool_t free_buffer(cir_buffer *buf, size_t freesize)
+static bool_t free_buffer(cir_buffer *buf, size_t freeseq)
 {
-    assert(freesize > buf->datasize);
-    if(freesize > (buf->size - (buf->tail-buf->buffer)))//free data regular
-    {
-        buf->tail+= freesize;
-    }
-    else //free data in circular way
-    {
-        buf->tail = buf->buffer +(freesize - (buf->size - (buf->tail-buf->buffer)));
-    }
-        
-    buf->freesize+= freesize;
-    buf->datasize-= freesize;
+    assert(freeseq >= buf->tail);
+    buf->tail = freeseq;
+    
+    
+    buf->datasize= buf->head - buf->tail;
+    buf->freesize= buf->size - buf->datasize;
     return 1;
 }
 
@@ -142,7 +138,7 @@ static bool_t free_buffer(cir_buffer *buf, size_t freesize)
 void our_dprintf(const char *format,...)
 {
     va_list argptr;
-    char buffer[1024];
+    /*char buffer[1024];
     
     assert(format);
     va_start(argptr, format);
@@ -150,6 +146,7 @@ void our_dprintf(const char *format,...)
     va_end(argptr);
     fputs(buffer, stdout);
     fflush(stdout);
+    */
 }
 
 /* this structure is global to a mysocket descriptor */
@@ -343,6 +340,7 @@ static bool_t transport_3handshake_positive(mysocket_t sd, context_t *ctx)
         return 1;
 }
 
+<<<<<<< Updated upstream
 static bool_t transport_2way_close_active(mysocket_t sd, context_t *ctx)//LAN
 {
 	STCPHeader head;
@@ -473,6 +471,20 @@ static bool_t transport_2way_close_positive(mysocket_t sd, context_t *ctx)//LAN
 
 	ctx->connection_state = CSTATE_CLOSE_WAIT;
 	return 1;
+=======
+static bool_t transport_close_active(mysocket_t sd, context_t *ctx)//ZX
+{
+    STCPHeader head;
+    transport_send_fragment(sd, TH_FIN|TH_ACK, &head, sizeof(STCPHeader), ctx);
+    ctx->connection_state = CSTATE_FIN_WAIT1;
+    our_dprintf("transport_close_active: sent FIN ACK\n");
+    
+
+    
+    our_dprintf("transport_close_active: Close finish\n");
+
+    return 1;
+>>>>>>> Stashed changes
 }
 
 /* initialise the transport layer, and start the main loop, handling
@@ -527,7 +539,7 @@ void transport_init(mysocket_t sd, bool_t is_active)
     }
     our_dprintf("Handshake Succeed! init send and recv buffer\n");
     //init send and recv buffer here
-    init_buffer(&ctx->send_buffer, BUFFER_SIZE, ctx->initial_sequence_num);//FIXME
+    init_buffer(&ctx->send_buffer, BUFFER_SIZE, ctx->initial_sequence_num);
     init_buffer(&ctx->recv_buffer, BUFFER_SIZE, ctx->initial_sequence_num);
     
     //our_dprintf("Init send and recv buffer succeed\n");
@@ -598,22 +610,52 @@ static void control_loop(mysocket_t sd, context_t *ctx)
             if (ctx->connection_state != CSTATE_ESTABLISHED) {
                 our_dprintf("APP_DATA: conn state is wrong:%d\n", ctx->connection_state);
                 errno = ECONNABORTED;
+                continue;
             }
             
-            /* FIXME Later if we use a real send buffer
-            //get send buffer free size == freesize
-            //alloc memory from main memory for cache
-            //write cache data to send buffer with real data size
-            */
+            
+            char* temp_buffer =  (char *)malloc(ctx->send_buffer.freesize);
+            
+            if (temp_buffer == NULL) {
+                our_dprintf("APP_DATA: temp buffer alloc failed: %d\n", ctx->connection_state);
+                errno = ECONNABORTED;
+                continue;
+            }
+
             /* the application has requested that data be sent */
-            size_t datasize = stcp_app_recv(sd, cache+sizeof(STCPHeader), STCP_MSS-sizeof(STCPHeader));
+            size_t datasize = stcp_app_recv(sd, temp_buffer, ctx->send_buffer.freesize);
             our_dprintf("APP_DATA: stcp_app_recv finish datasize=%d \n", datasize);
+            
+            
+            /*cache all data to buffer*/
+            write_buffer(&ctx->send_buffer, temp_buffer, datasize);
+            
+            free(temp_buffer);
+            
+            /*find current min message size*/
+            
+            size_t seg_size = MIN(ctx->slide_window, MIN(ctx->send_buffer.datasize, STCP_MSS-sizeof(STCPHeader)));
+            
             //while datasize !=0, receive all appdata and send to network;
-            if (datasize >0) {
+            if (seg_size >0 ) {
                 
                 //send stcp_network_send(); simply just receive app data and send out
-                our_dprintf("APP_DATA: send data to peer datasize=%d \n", datasize);
-                transport_send_fragment(sd, TH_ACK, cache, datasize + sizeof(STCPHeader),ctx);
+                our_dprintf("APP_DATA: send data to peer datasize=%d \n", seg_size);
+                
+                char * send_buffer = (char *)malloc(seg_size + sizeof(STCPHeader));
+                if (send_buffer == NULL) {
+                    our_dprintf("APP_DATA: send buffer alloc failed: %d\n", ctx->connection_state);
+                    errno = ECONNABORTED;
+                    continue;
+                }
+                //read data from send buffer
+                read_buffer(&ctx->send_buffer, ctx->next_seq, send_buffer+sizeof(STCPHeader), seg_size);
+                
+                //send data to network layer
+                transport_send_fragment(sd, TH_ACK, send_buffer, seg_size+sizeof(STCPHeader),ctx);
+                
+                //free send_buffer
+                free(send_buffer);
             
             }
         }
@@ -644,22 +686,54 @@ static void control_loop(mysocket_t sd, context_t *ctx)
                     our_dprintf("NETWORK_DATA: stcp_app_send datasize=%d \n", recvsize-sizeof(STCPHeader));
                     stcp_app_send(sd, cache+sizeof(STCPHeader), recvsize-sizeof(STCPHeader));
                 }
+                
+                //if that end need to close this connection
+                if (head->th_flags == (TH_FIN|TH_ACK)) {
+                    
+                    STCPHeader head;
+                    ctx->connection_state = CSTAET_CLOSE_WAIT;
+                    transport_send_fragment(sd, (TH_FIN|TH_ACK), &head, sizeof(STCPHeader), ctx);
+                    our_dprintf("transport_close_postive: sent FIN ACK\n");
+                    ctx->connection_state = CSTATE_CLOSED;
+                    our_dprintf("NETWORK_DATA: Close down Succeed :%d\n", ctx->connection_state);
+                    ctx->done = 1;
+                    continue;
+                }
             }
+<<<<<<< Updated upstream
             size_t acksize = 0;
             /* only with send buffer
+=======
+            //free acked data in buffer
+            free_buffer(&ctx->send_buffer, ctx->send_ack);
+
+>>>>>>> Stashed changes
             //find out how many data I need send use this ack
-            if (ctx->send_buffer->datasize > 0) {
-                acksize = MIN(ctx->send_buffer->datasize, ctx->slide_window);
-                read_buffer(ctx->send_buffer, ctx->next_seq, cache + sizeof(STCPHeader), acksize);
+            size_t seg_size = 0;
+            if (ctx->send_buffer.datasize > 0) {
+                seg_size = MIN(ctx->slide_window, MIN(ctx->send_buffer.datasize, STCP_MSS-sizeof(STCPHeader)));
+                
             }
-            */
             
-            //send ACK to peer with data only when new data arrived
-            if (recvsize > sizeof(STCPHeader))
+            char * send_buffer = (char *) malloc(seg_size + sizeof(STCPHeader));
+            if (send_buffer == NULL) {
+                our_dprintf("APP_DATA: send buffer alloc failed: %d\n", ctx->connection_state);
+                errno = ECONNABORTED;
+                continue;
+            }
+            //read data from send buffer
+            if(seg_size > 0)
+            {
+                read_buffer(&ctx->send_buffer, ctx->next_seq, send_buffer+sizeof(STCPHeader), seg_size);
+            }
+            
+            //send ACK to peer with data only when new data arrived or need send unsent data
+            if (recvsize > sizeof(STCPHeader) || seg_size > 0)
             {
                 our_dprintf("NETWORK_DATA: send ack to peer sendack=%d, nextseq=%d\n",ctx->send_ack,ctx->next_seq);
-                transport_send_fragment(sd, TH_ACK, cache, sizeof(STCPHeader) + acksize, ctx);
+                transport_send_fragment(sd, TH_ACK, send_buffer, sizeof(STCPHeader) + seg_size, ctx);
             }
+<<<<<<< Updated upstream
             // receive FIN
            /* STCPHeader *header = (STCPHeader *) cache;
             if(header->th_flags==TH_FIN) 
@@ -669,6 +743,11 @@ static void control_loop(mysocket_t sd, context_t *ctx)
                  ctx_s->close_requested = true;     
              }
            */
+=======
+            
+            free(send_buffer);
+
+>>>>>>> Stashed changes
         }
         
         if(event & APP_CLOSE_REQUESTED)//ZX
@@ -678,7 +757,11 @@ static void control_loop(mysocket_t sd, context_t *ctx)
                 our_dprintf("APP_CLOSE_REQUESTED: conn state is wrong :%d\n", ctx->connection_state);
                 errno = ECONNABORTED;
             }
+<<<<<<< Updated upstream
             if(!transport_2way_close_active(sd, ctx)||!transport_2way_close_positive(sd, ctx))
+=======
+            if(transport_close_active(sd, ctx) != 1)
+>>>>>>> Stashed changes
             {
                 our_dprintf("APP_CLOSE_REQUESTED: Close down failed :%d\n", ctx->connection_state);
                 errno = ECONNABORTED;
