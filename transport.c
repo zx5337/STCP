@@ -26,14 +26,14 @@
 #define RECEIVE_WIN 3072 //receive window size
 
 enum {
-    CSTATE_CLOSED,
+  CSTATE_CLOSED,
     CSTATE_SYN_SENT,
     CSTATE_SYN_RECVD,
     CSTATE_ESTABLISHED,
     CSTATE_FIN_WAIT1,
-    CSTSTE_FIN_WATI2,
+    CSTSTE_FIN_WAIT2,
     CSTATE_TIME_WAIT,
-    CSTAET_CLOSE_WAIT,
+    CSTATE_CLOSE_WAIT,
     CSTATE_LAST_ACK
     };    /* you should have more states */
 
@@ -343,12 +343,136 @@ static bool_t transport_3handshake_positive(mysocket_t sd, context_t *ctx)
         return 1;
 }
 
-
-
-static bool_t transport_2way_close(mysocket_t sd, context_t *ctx)//ZX
+static bool_t transport_2way_close_active(mysocket_t sd, context_t *ctx)//LAN
 {
+	STCPHeader head;
+	//send out a FIN&ACK fragment
+	//our_dprintf("Handshake_active: sending FIN&ACK \n");
+	transport_send_fragment(sd, TH_FIN|TH_ACK, &head, sizeof(STCPHeader), ctx);
+	ctx->connection_state = CSTATE_FIN_WAIT1;
+	//wait for ACK
+	unsigned int event;
+
+	//our_dprintf("Handshake_active: wait for ACK\n");
+
+	event = stcp_wait_for_event(sd, NETWORK_DATA, NULL);
+
+	//read the header from network
+	size_t headsize = transport_recv_fragment(sd, &head, sizeof(STCPHeader));
+	if (headsize != sizeof(STCPHeader))
+	{
+		our_dprintf("Handshake_active: headersize not right :%zu\n", headsize);
+		errno = ECONNREFUSED;
+		return 0;
+	}
+	//if it is  ACK message
+	if (head.th_flags != TH_ACK)
+	{
+		our_dprintf("Handshake_active: not receive FIN ACK :%u\n", head.th_flags);
+		errno = ECONNREFUSED;
+		return 0;
+	}
+	//our_dprintf("Handshake_active: received ACK, seq=%d, ack=%d, win=%d\n",head.th_seq,head.th_ack,head.th_win);
+	ctx->send_ack = head.th_ack;
+	ctx->recv_ack = head.th_seq;
+	ctx->slide_window = head.th_win;//receive buffer free size of the other side
+	ctx->connection_state = CSTATE_FIN_WAIT2;
+
+	event = stcp_wait_for_event(sd, NETWORK_DATA, NULL);
+	headsize = transport_recv_fragment(sd, &head, sizeof(STCPHeader));
+	if (headsize != sizeof(STCPHeader))
+	{
+		our_dprintf("Handshake_positive: headersize not right 1 :%zu\n", headsize);
+		errno = ECONNREFUSED;
+		return 0;
+	}
+
+	//if it is  FIN ACK confirmed message
+	if (head.th_flags != (TH_ACK|TH_FIN))
+	{
+		our_dprintf("Handshake_positive: not receive ACK 1 :%u\n", head.th_flags);
+		errno = ECONNREFUSED;
+		return 0;
+	}
+	ctx->connection_state = CSTATE_TIME_WAIT;
+	//our_dprintf("Handshake_active: received FIN ACK, seq=%d, ack=%d, win=%d\n",head.th_seq,head.th_ack,head.th_win);
+	ctx->send_ack = head.th_ack;
+	ctx->recv_ack = head.th_seq;
+	ctx->slide_window = head.th_win;//receive buffer free size of the other side
+
+
+	//our_dprintf("Handshake_active: sending finial ACK back\n");
+	//send ACK back then finished
+	transport_send_fragment(sd, TH_ACK, &head, sizeof(STCPHeader), ctx);
+
+	return 1;
+}
+
+static bool_t transport_2way_close_positive(mysocket_t sd, context_t *ctx)//LAN
+{
+	//our_dprintf("Handshake_positive: wait for FIN ACK\n");
+	unsigned int event = stcp_wait_for_event(sd, NETWORK_DATA, NULL);
+
+	//read the header from network
+	STCPHeader head;
+	size_t headsize = transport_recv_fragment(sd, &head, sizeof(STCPHeader));
+	if (headsize != sizeof(STCPHeader))
+	{
+		our_dprintf("Handshake_positive: headersize not right :%zu\n", headsize);
+		errno = ECONNREFUSED;
+		return 0;
+	}
+
+	//if it is FIN ACK message
+	if (head.th_flags != (TH_FIN|TH_ACK))
+	{
+		our_dprintf("Handshake_positive: not receive SYN :%u\n", head.th_flags);
+		errno = ECONNREFUSED;
+		return 0;
+	}
+
+	//our_dprintf("Handshake_positive: received SYN, seq=%d, ack=%d, win=%d\n",head.th_seq,head.th_ack,head.th_win);
+	ctx->send_ack = head.th_ack;
+	ctx->recv_ack = head.th_seq;
+	ctx->slide_window = head.th_win;//receive buffer free size of the other side
+
+	ctx->connection_state = CSTATE_CLOSE_WAIT;
+
+	//our_dprintf("Handshake_positive: sending ACK back \n");
+	//send ACK back then finished
+	transport_send_fragment(sd, TH_ACK, &head, sizeof(STCPHeader), ctx);
+
+	
+	ctx->connection_state = CSTATE_LAST_ACK;
+	//our_dprintf("Handshake_positive: sent FIN ACK back \n");
+	// send FIN ACK back then finished
+	transport_send_fragment(sd, TH_FIN|TH_ACK, &head, sizeof(STCPHeader), ctx);
     
-    return 1;
+	event = stcp_wait_for_event(sd, NETWORK_DATA, NULL);
+
+	headsize = transport_recv_fragment(sd, &head, sizeof(STCPHeader));
+	if (headsize != sizeof(STCPHeader))
+	{
+		our_dprintf("Handshake_positive: headersize not right 1 :%zu\n", headsize);
+		errno = ECONNREFUSED;
+		return 0;
+	}
+
+	//if it is  ACK confirmed message
+	if (head.th_flags != TH_ACK)
+	{
+		our_dprintf("Handshake_positive: not receive ACK 1 :%u\n", head.th_flags);
+		errno = ECONNREFUSED;
+		return 0;
+	}
+
+	//our_dprintf("Handshake_positive: received SYN, seq=%d, ack=%d, win=%d\n",head.th_seq,head.th_ack,head.th_win);
+	ctx->send_ack = head.th_ack;
+	ctx->recv_ack = head.th_seq;
+	ctx->slide_window = head.th_win;
+
+	ctx->connection_state = CSTATE_CLOSE_WAIT;
+	return 1;
 }
 
 /* initialise the transport layer, and start the main loop, handling
