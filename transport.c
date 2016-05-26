@@ -31,7 +31,7 @@ enum {
     CSTATE_SYN_RECVD,
     CSTATE_ESTABLISHED,
     CSTATE_FIN_WAIT1,
-    CSTSTE_FIN_WAIT2,
+    CSTATE_FIN_WAIT2,
     CSTATE_TIME_WAIT,
     CSTATE_CLOSE_WAIT,
     CSTATE_LAST_ACK
@@ -678,7 +678,7 @@ static void control_loop(mysocket_t sd, context_t *ctx)
                 our_dprintf("APP_CLOSE_REQUESTED: conn state is wrong :%d\n", ctx->connection_state);
                 errno = ECONNABORTED;
             }
-            if(!transport_2way_close(sd, ctx))
+            if(!transport_2way_close_active(sd, ctx)||!transport_2way_close_positive(sd, ctx))
             {
                 our_dprintf("APP_CLOSE_REQUESTED: Close down failed :%d\n", ctx->connection_state);
                 errno = ECONNABORTED;
